@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบรับแจ้งและบริหารจัดการความปลอดภัยผังอาคาร</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts (Kanit & Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Kanit', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Kanit', sans-serif;
+            background-color: #f8fafc;
+        }
+        /* Canvas grid background */
+        .floor-grid {
+            background-size: 24px 24px;
+            background-image: 
+                linear-gradient(to right, rgba(226, 232, 240, 0.5) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(226, 232, 240, 0.5) 1px, transparent 1px);
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        /* Pulse Animation for Critical Pins */
+        @keyframes pin-pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.3); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pin-pulse {
+            animation: pin-pulse 1.2s infinite ease-in-out;
+        }
+        .plan-transform {
+            transform-origin: 0 0;
+            transition: transform 0.1s ease-out;
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <!-- Header Navigation Bar -->
+    <header class="bg-slate-900 text-white sticky top-0 z-30 shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="p-2 bg-rose-500 rounded-lg text-white">
+                    <i data-lucide="shield-alert" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight">Safety & Hazard Management System</h1>
+                    <p class="text-xs text-slate-400">ระบบรับแจ้งและบริหารจัดการความปลอดภัยด้วยผังอาคารจริง</p>
+                </div>
+            </div>
+
+            <!-- Mode Selector Switcher -->
+            <div class="flex items-center gap-3">
+                <div class="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700">
+                    <button id="btn-mode-user" onclick="switchMode('user')" 
+                        class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 bg-emerald-500 text-white shadow-sm">
+                        <i data-lucide="user" class="w-4 h-4"></i>
+                        <span>โหมดแจ้งเหตุ (User)</span>
+                    </button>
+                    <button id="btn-mode-admin" onclick="switchMode('admin')" 
+                        class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 text-slate-400 hover:text-white">
+                        <i data-lucide="settings" class="w-4 h-4"></i>
+                        <span>จัดการผัง (Admin)</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+
+        <!-- Stat Cards / Dashboard Summary -->
+        <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-medium text-slate-500">จุดเสี่ยงทั้งหมด</p>
+                    <h3 id="stat-total" class="text-2xl font-bold text-slate-800 mt-1">0</h3>
+                </div>
+                <div class="p-3 bg-slate-100 rounded-xl text-slate-600">
+                    <i data-lucide="map-pin" class="w-6 h-6"></i>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-medium text-slate-500">รอการแก้ไข</p>
+                    <h3 id="stat-pending" class="text-2xl font-bold text-amber-600 mt-1">0</h3>
+                </div>
+                <div class="p-3 bg-amber-50 rounded-xl text-amber-600">
+                    <i data-lucide="clock" class="w-6 h-6"></i>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-medium text-slate-500">กำลังดำเนินการ</p>
+                    <h3 id="stat-progress" class="text-2xl font-bold text-blue-600 mt-1">0</h3>
+                </div>
+                <div class="p-3 bg-blue-50 rounded-xl text-blue-600">
+                    <i data-lucide="wrench" class="w-6 h-6"></i>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-medium text-slate-500">แก้ไขเสร็จสิ้น</p>
+                    <h3 id="stat-resolved" class="text-2xl font-bold text-emerald-600 mt-1">0</h3>
+                </div>
+                <div class="p-3 bg-emerald-50 rounded-xl text-emerald-600">
+                    <i data-lucide="check-circle-2" class="w-6 h-6"></i>
+                </div>
+            </div>
+        </section>
+
+        <!-- Floor Plan Layout Container -->
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <!-- Floor Plan Top Bar -->
+            <div class="p-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50">
+                <div class="flex items-center space-x-2">
+                    <i data-lucide="layout-grid" class="w-5 h-5 text-slate-500"></i>
+                    <h2 class="font-semibold text-slate-800" id="plan-title">ผังอาคาร: งานบริการผ้า ชั้น 1</h2>
+                    <span id="mode-badge" class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
+                        โหมดผู้ใช้: คลิกปักหมุดเพื่อแจ้งเหตุ
+                    </span>
+                </div>
+
+                <!-- Floor Controls & Admin Tools -->
+                <div class="flex items-center flex-wrap gap-2">
+                    <!-- Zoom & Pan Controls -->
+                    <div class="flex items-center bg-white border border-slate-200 rounded-lg shadow-sm p-0.5 text-slate-600">
+                        <button onclick="zoomCanvas(0.15)" title="ซูมเข้า" class="p-1.5 hover:bg-slate-100 rounded text-xs">
+                            <i data-lucide="zoom-in" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="zoomCanvas(-0.15)" title="ซูมออก" class="p-1.5 hover:bg-slate-100 rounded text-xs">
+                            <i data-lucide="zoom-out" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="resetZoom()" title="รีเซ็ตมุมมอง" class="p-1.5 hover:bg-slate-100 rounded text-xs">
+                            <i data-lucide="maximize-2" class="w-4 h-4"></i>
+                        </button>
+                        <div class="h-4 w-px bg-slate-200 mx-1"></div>
+                        <button id="btn-toggle-pan" onclick="togglePanMode()" title="โหมดลากผังอาคาร (Pan Mode)" class="p-1.5 hover:bg-slate-100 rounded text-xs flex items-center gap-1">
+                            <i data-lucide="hand" class="w-4 h-4"></i>
+                            <span class="text-[11px] font-medium hidden sm:inline">ลากผัง</span>
+                        </button>
+                    </div>
+
+                    <!-- Admin Upload Floor Plan Controls -->
+                    <div id="admin-controls" class="hidden flex items-center gap-2">
+                        <label class="cursor-pointer bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-2 rounded-lg font-medium transition shadow-sm flex items-center space-x-1">
+                            <i data-lucide="upload" class="w-4 h-4"></i>
+                            <span>อัปโหลดภาพผังใหม่</span>
+                            <input type="file" id="upload-plan-input" accept="image/*" class="hidden" onchange="handleImageUpload(event)">
+                        </label>
+                        <button onclick="resetDefaultPlan()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs px-3 py-2 rounded-lg font-medium transition flex items-center space-x-1">
+                            <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                            <span>ใช้ผังเริ่มต้น</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Floor Plan Interactive Canvas Area -->
+            <div class="p-4 relative">
+                <!-- Instruction Hint -->
+                <div id="instruction-bar" class="mb-3 p-2.5 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 flex items-center justify-between">
+                    <div class="flex items-center space-x-2">
+                        <i data-lucide="info" class="w-4 h-4 flex-shrink-0"></i>
+                        <span id="instruction-text">คลิกตรงตำแหน่งบนผังอาคารจริง เพื่อปักหมุดแจ้งจุดเสี่ยง/อันตราย</span>
+                    </div>
+                    <div class="flex items-center gap-3 text-slate-500 text-xs font-medium">
+                        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> ต่ำ</span>
+                        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> ปานกลาง</span>
+                        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-orange-500"></span> สูง</span>
+                        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-rose-600"></span> วิกฤต</span>
+                    </div>
+                </div>
+
+                <!-- Main Viewport Canvas Container -->
+                <div id="floor-canvas-viewport" class="relative w-full h-[520px] sm:h-[620px] bg-slate-200 rounded-xl border-2 border-slate-300 overflow-hidden floor-grid cursor-crosshair">
+                    
+                    <!-- Zoom & Pan Layer Container -->
+                    <div id="canvas-transform-wrapper" class="absolute inset-0 plan-transform">
+                        
+                        <!-- SVG / Image Background Floor Plan Layer -->
+                        <div id="floor-plan-background" class="relative w-[1000px] h-[680px] bg-white shadow-md mx-auto my-auto select-none overflow-hidden" onclick="handleCanvasClick(event)">
+                            
+                            <!-- Dynamic Render Background (Uploaded Image or Default SVG Canvas) -->
+                            <div id="plan-graphics-container" class="absolute inset-0 w-full h-full"></div>
+
+                            <!-- Pins Layer Overlay -->
+                            <div id="pins-container" class="absolute inset-0 pointer-events-none"></div>
+
+                        </div>
+
+                    </div>
+
+                    <!-- Map Legend Overlay (Bottom Left) -->
+                    <div class="absolute bottom-3 left-3 bg-white/90 backdrop-blur-md p-3 rounded-xl shadow-lg border border-slate-200 text-[11px] text-slate-700 space-y-1 z-20 pointer-events-none hidden sm:block">
+                        <div class="font-bold text-slate-800 border-b pb-1 mb-1">สัญลักษณ์โซนงานบริการผ้า</div>
+                        <div class="grid grid-cols-2 gap-x-3 gap-y-1">
+                            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-sky-100 border border-sky-300"></span> ห้องพับผ้า</span>
+                            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-purple-100 border border-purple-300"></span> ห้องบรรจุผ้า</span>
+                            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-fuchsia-100 border border-fuchsia-300"></span> ห้องเครื่องซักผ้า</span>
+                            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-emerald-100 border border-emerald-300"></span> ห้องเครื่องอบผ้า</span>
+                            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-rose-100 border border-rose-300"></span> ห้องชั่งน้ำหนักผ้า</span>
+                            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-amber-100 border border-amber-300"></span> ห้องควบคุม</span>
+                            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-cyan-100 border border-cyan-300"></span> ห้องเก็บสารเคมี</span>
+                            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-slate-300 border border-slate-400"></span> บริเวณเครื่องรีดผ้า</span>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- Reports Table & Management Section -->
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="p-4 sm:p-5 border-b border-slate-100 space-y-4">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                        <h2 class="font-semibold text-lg text-slate-800">ตารางบันทึกรายละเอียดการรับแจ้งและตำแหน่งจุดเสี่ยง</h2>
+                        <p class="text-xs text-slate-500">คลิกรายการในตารางเพื่อไฮไลท์หมุดบนผังอาคาร หรือกรอกข้อมูลค้นหา</p>
+                    </div>
+                    
+                    <!-- Filter & Search Bar -->
+                    <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                        <div class="relative flex-1 sm:w-48">
+                            <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5"></i>
+                            <input type="text" id="search-input" oninput="renderTable()" placeholder="ค้นหาหัวข้อ / ผู้แจ้ง / โซน..." 
+                                class="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        </div>
+                        
+                        <select id="filter-status" onchange="renderTable()" class="py-1.5 px-3 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+                            <option value="ALL">สถานะทั้งหมด</option>
+                            <option value="รอแก้ไข">รอแก้ไข</option>
+                            <option value="กำลังดำเนินการ">กำลังดำเนินการ</option>
+                            <option value="แก้ไขแล้ว">แก้ไขแล้ว</option>
+                        </select>
+
+                        <select id="filter-severity" onchange="renderTable()" class="py-1.5 px-3 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+                            <option value="ALL">ความรุนแรงทั้งหมด</option>
+                            <option value="วิกฤต">วิกฤต</option>
+                            <option value="สูง">สูง</option>
+                            <option value="ปานกลาง">ปานกลาง</option>
+                            <option value="ต่ำ">ต่ำ</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table Container -->
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50 text-slate-500 text-xs uppercase font-medium border-b border-slate-200">
+                            <th class="p-3.5 text-center w-12">ไอคอน</th>
+                            <th class="p-3.5">หัวข้อจุดเสี่ยง / โซนผังอาคาร</th>
+                            <th class="p-3.5">ประเภทความเสี่ยง</th>
+                            <th class="p-3.5 text-center">ระดับความรุนแรง</th>
+                            <th class="p-3.5">ผู้แจ้ง / เวลา</th>
+                            <th class="p-3.5 text-center">สถานะ</th>
+                            <th class="p-3.5 text-right">การจัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body" class="divide-y divide-slate-100 text-xs sm:text-sm">
+                        <!-- Dynamic Rows Rendered Here -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Empty State -->
+            <div id="empty-state" class="hidden p-8 text-center text-slate-400">
+                <i data-lucide="inbox" class="w-12 h-12 mx-auto mb-2 stroke-1"></i>
+                <p>ไม่พบรายการแจ้งเหตุที่ตรงกับเงื่อนไข</p>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-4 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500">
+            © 2026 ระบบบริหารจัดการความปลอดภัยด้วยผังอาคารจริง (Laundry & School Building Safety System)
+        </div>
+    </footer>
+
+    <!-- MODAL: Add/Edit Hazard Report Modal (User) -->
+    <div id="report-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 transform transition-all scale-100 space-y-4">
+            <div class="flex items-center justify-between border-b pb-3">
+                <div class="flex items-center space-x-2 text-rose-600">
+                    <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+                    <h3 class="font-bold text-slate-800 text-base">แบบฟอร์มระบุรายละเอียดจุดเสี่ยง/อันตราย</h3>
+                </div>
+                <button onclick="closeModal('report-modal')" class="text-slate-400 hover:text-slate-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <form id="hazard-form" onsubmit="handleFormSubmit(event)" class="space-y-3.5">
+                <!-- Hidden Coordinates -->
+                <input type="hidden" id="report-x">
+                <input type="hidden" id="report-y">
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">หัวข้อจุดเสี่ยง/อันตรายที่พบ <span class="text-rose-500">*</span></label>
+                    <input type="text" id="report-title" required placeholder="เช่น ท่อไอน้ำรั่ว, ปลั๊กไฟตู้ซักผ้าชำรุด, สารเคมีหก" 
+                        class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:outline-none">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">ประเภทความเสี่ยง</label>
+                        <select id="report-category" class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:outline-none">
+                            <option value="เครื่องจักร/อุปกรณ์">⚙️ เครื่องจักร/อุปกรณ์</option>
+                            <option value="ระบบไฟฟ้า/ความร้อน">⚡ ระบบไฟฟ้า/ความร้อน</option>
+                            <option value="สารเคมี/ความปลอดภัย">🧪 สารเคมี/ความปลอดภัย</option>
+                            <option value="พื้นลื่น/ทางเดิน">🪵 พื้นลื่น/ทางเดิน</option>
+                            <option value="โครงสร้าง/อาคาร">🏗️ โครงสร้าง/อาคาร</option>
+                            <option value="อื่นๆ">⚠️ อื่นๆ</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">ระดับความรุนแรง</label>
+                        <select id="report-severity" class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:outline-none">
+                            <option value="ต่ำ">🟢 ต่ำ (เฝ้าระวัง)</option>
+                            <option value="ปานกลาง" selected>🟡 ปานกลาง (ควรแก้ไข)</option>
+                            <option value="สูง">🟠 สูง (อันตราย)</option>
+                            <option value="วิกฤต">🔴 วิกฤต (ด่วนที่สุด)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">รายละเอียดเพิ่มเติม</label>
+                    <textarea id="report-desc" rows="3" placeholder="ระบุรายละเอียดเพิ่มเติม สภาพปัญหา หรือข้อสังเกต..." 
+                        class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:outline-none"></textarea>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">ผู้แจ้งเหตุ <span class="text-rose-500">*</span></label>
+                        <input type="text" id="report-author" required placeholder="ชื่อผู้แจ้ง / เจ้าหน้าที่" 
+                            class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">ตำแหน่งในผัง</label>
+                        <input type="text" id="report-location-name" readonly 
+                            class="w-full px-3 py-2 text-xs bg-slate-100 border border-slate-200 text-slate-600 rounded-lg font-mono">
+                    </div>
+                </div>
+
+                <div class="flex justify-end space-x-2 pt-3 border-t">
+                    <button type="button" onclick="closeModal('report-modal')" class="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg">ยกเลิก</button>
+                    <button type="submit" class="px-4 py-2 text-xs font-medium bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-sm">บันทึกแจ้งเหตุ</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast Notification Message Container -->
+    <div id="toast" class="fixed bottom-5 right-5 z-50 transform transition-all duration-300 translate-y-20 opacity-0 pointer-events-none bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center space-x-2 text-xs">
+        <i id="toast-icon" data-lucide="info" class="w-4 h-4 text-emerald-400"></i>
+        <span id="toast-message">แจ้งเตือนสำเร็จ</span>
+    </div>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // Initial Mock Pins Data for Laundry Building
+        const DEFAULT_PINS = [
+            {
+                id: 'p1',
+                title: 'ท่อไอน้ำเครื่องอบผ้ามีรอยรั่ว',
+                category: 'ระบบไฟฟ้า/ความร้อน',
+                severity: 'วิกฤต',
+                desc: 'มีไอน้ำความร้อนสูงพุ่งออกมาบริเวณหลังเครื่องอบผ้าตัวที่ 2',
+                author: 'สมพงษ์ ช่างบำรุง',
+                status: 'รอแก้ไข',
+                x: 420,
+                y: 380,
+                locationName: 'ห้องเครื่องอบผ้า',
+                timestamp: '12 พ.ย. 2026, 09:15'
+            },
+            {
+                id: 'p2',
+                title: 'น้ำยาซักผ้าหกรดพื้นลื่น',
+                category: 'สารเคมี/ความปลอดภัย',
+                severity: 'ปานกลาง',
+                desc: 'มีคราบน้ำยาซักผ้าหกริมประตูทางเข้า อาจทำให้เจ้าหน้าที่ลื่นไถล',
+                author: 'วรรณา บริการผ้า',
+                status: 'กำลังดำเนินการ',
+                x: 230,
+                y: 190,
+                locationName: 'ห้องเก็บสารเคมี',
+                timestamp: '11 พ.ย. 2026, 13:40'
+            },
+            {
+                id: 'p3',
+                title: 'สายไฟเครื่องพับผ้าชำรุด',
+                category: 'เครื่องจักร/อุปกรณ์',
+                severity: 'สูง',
+                desc: 'ฉนวนสายไฟถลอกเห็นเนื้อทองแดง บริเวณโซนเครื่องพับผ้า',
+                author: 'อนุชา ปลอดภัย',
+                status: 'แก้ไขแล้ว',
+                x: 740,
+                y: 270,
+                locationName: 'บริเวณเครื่องรีดผ้าและเครื่องพับผ้า',
+                timestamp: '10 พ.ย. 2026, 10:20'
+            }
+        ];
+
+        // State Storage
+        let pins = JSON.parse(localStorage.getItem('laundry_hazard_pins')) || DEFAULT_PINS;
+        let customPlanImage = localStorage.getItem('laundry_custom_plan_img') || null;
+        let currentMode = 'user'; // 'user' or 'admin'
+        let activeSelectedPinId = null;
+
+        // Zoom & Pan Canvas States
+        let zoomScale = 1;
+        let panX = 0;
+        let panY = 0;
+        let isPanMode = false;
+        let isDraggingPan = false;
+        let startPanX = 0;
+        let startPanY = 0;
+
+        // Initialize App
+        window.addEventListener('DOMContentLoaded', () => {
+            renderFloorPlanBackground();
+            renderPins();
+            renderTable();
+            updateStats();
+            setupPanZoomEvents();
+            lucide.createIcons();
+        });
+
+        // Save Pins to LocalStorage
+        function saveData() {
+            localStorage.setItem('laundry_hazard_pins', JSON.stringify(pins));
+            updateStats();
+        }
+
+        // Render Background Floor Plan Graphics (SVG Plan matching user's image or custom uploaded image)
+        function renderFloorPlanBackground() {
+            const container = document.getElementById('plan-graphics-container');
+            
+            if (customPlanImage) {
+                // Render Uploaded Image Background
+                container.innerHTML = `<img src="${customPlanImage}" class="w-full h-full object-contain pointer-events-none" alt="ผังอาคารเรียน/งานบริการผ้า">`;
+                document.getElementById('plan-title').textContent = "ผังอาคารจริง (อัปโหลดโดย Admin)";
+                return;
+            }
+
+            document.getElementById('plan-title').textContent = "ผังอาคาร: งานบริการผ้า ชั้น 1";
+
+            // Render SVG Standard Plan (Exact visual layout of 'งานบริการผ้า ชั้น 1')
+            container.innerHTML = `
+                <svg width="1000" height="680" viewBox="0 0 1000 680" xmlns="http://www.w3.org/2000/svg" class="w-full h-full">
+                    <!-- Outer Building Frame -->
+                    <rect x="20" y="60" width="940" height="490" fill="#f8fafc" stroke="#475569" stroke-width="6"/>
+                    <rect x="20" y="580" width="940" height="60" fill="none" stroke="#475569" stroke-width="4"/>
+
+                    <!-- Outer Left Corridor / Office Zone -->
+                    <rect x="30" y="70" width="80" height="470" fill="#e2e8f0" stroke="#64748b" stroke-width="2"/>
+                    <rect x="40" y="520" width="50" height="30" fill="#cbd5e1" stroke="#64748b" stroke-width="2"/>
+                    <text x="65" y="538" font-size="10" font-family="Kanit" fill="#334155" text-anchor="middle">บันได</text>
+
+                    <!-- Top Left Block: ห้องเก็บสารเคมี (Cyan) -->
+                    <rect x="180" y="70" width="120" height="40" fill="#ffffff" stroke="#64748b" stroke-width="2"/>
+                    <rect x="180" y="110" width="120" height="70" fill="#cff4fc" stroke="#64748b" stroke-width="2"/>
+                    <text x="240" y="150" font-size="12" font-family="Kanit" font-weight="600" fill="#0891b2" text-anchor="middle">ห้องเก็บสารเคมี</text>
+
+                    <!-- Pink/Red Zone: ห้องเครื่องชั่งน้ำหนักผ้า (Red Tint) -->
+                    <rect x="180" y="180" width="120" height="120" fill="#fecdd3" stroke="#64748b" stroke-width="2"/>
+                    <text x="240" y="245" font-size="12" font-family="Kanit" font-weight="600" fill="#e11d48" text-anchor="middle">ห้องเครื่องชั่งน้ำหนักผ้า</text>
+
+                    <!-- Yellow Desk Icon in Pink Zone -->
+                    <rect x="190" y="195" width="25" height="15" fill="#fde047" stroke="#ca8a04" stroke-width="1"/>
+
+                    <!-- Corridor & Door Junction -->
+                    <rect x="180" y="300" width="120" height="90" fill="#f1f5f9" stroke="#64748b" stroke-width="2"/>
+
+                    <!-- Bottom Left Zone: ห้องควบคุม (Orange) -->
+                    <rect x="180" y="390" width="120" height="120" fill="#ffedd5" stroke="#64748b" stroke-width="2"/>
+                    <text x="240" y="455" font-size="12" font-family="Kanit" font-weight="600" fill="#ea580c" text-anchor="middle">ห้องควบคุม</text>
+                    <!-- Fire Extinguisher Icon -->
+                    <rect x="282" y="395" width="12" height="14" fill="#ef4444" rx="2"/>
+                    <text x="288" y="406" font-size="9" fill="#fff" text-anchor="middle" font-weight="bold">F</text>
+
+                    <!-- Middle Upper Section: ห้องซักผ้า (Pink/Purple) -->
+                    <rect x="310" y="70" width="330" height="70" fill="#ffffff" stroke="#64748b" stroke-width="2"/>
+                    <rect x="310" y="140" width="330" height="60" fill="#fbcfe8" stroke="#64748b" stroke-width="2"/>
+                    <text x="475" y="175" font-size="13" font-family="Kanit" font-weight="600" fill="#db2777" text-anchor="middle">ห้องเครื่องซักผ้า</text>
+                    <!-- Washing Machines (Circles) -->
+                    <g fill="#fde047" stroke="#ca8a04" stroke-width="2">
+                        <circle cx="360" cy="170" r="14"/>
+                        <circle cx="410" cy="170" r="14"/>
+                        <circle cx="460" cy="170" r="14"/>
+                        <circle cx="510" cy="170" r="14"/>
+                        <circle cx="560" cy="170" r="14"/>
+                        <circle cx="610" cy="170" r="14"/>
+                    </g>
+
+                    <!-- Middle Green Section: ห้องเครื่องอบผ้า (Green) -->
+                    <rect x="310" y="200" width="330" height="90" fill="#a7f3d0" stroke="#64748b" stroke-width="2"/>
+                    <text x="475" y="230" font-size="13" font-family="Kanit" font-weight="600" fill="#047857" text-anchor="middle">ห้องเครื่องอบผ้า</text>
+                    <!-- Dryer Machine Circles -->
+                    <g fill="#fde047" stroke="#ca8a04" stroke-width="2">
+                        <circle cx="350" cy="260" r="14"/>
+                        <circle cx="395" cy="260" r="14"/>
+                        <circle cx="440" cy="260" r="14"/>
+                        <circle cx="485" cy="260" r="14"/>
+                        <circle cx="530" cy="260" r="14"/>
+                        <circle cx="575" cy="260" r="14"/>
+                    </g>
+
+                    <!-- Middle Bottom Section: Technical & Storage -->
+                    <rect x="310" y="290" width="190" height="120" fill="#f8fafc" stroke="#64748b" stroke-width="2"/>
+                    <rect x="500" y="290" width="140" height="120" fill="#f8fafc" stroke="#64748b" stroke-width="2"/>
+
+                    <!-- Right Top Section: ห้องพับผ้า & บริเวณเครื่องรีดผ้า (Sky/Gray) -->
+                    <rect x="640" y="70" width="310" height="130" fill="#e0f2fe" stroke="#64748b" stroke-width="2"/>
+                    <text x="730" y="95" font-size="13" font-family="Kanit" font-weight="600" fill="#0369a1" text-anchor="middle">ห้องพับผ้า</text>
+
+                    <!-- Ironing & Folding Machine Area (Purple-Gray) -->
+                    <rect x="640" y="200" width="120" height="90" fill="#cbd5e1" stroke="#64748b" stroke-width="2"/>
+                    <rect x="640" y="290" width="310" height="120" fill="#e0f2fe" stroke="#64748b" stroke-width="2"/>
+                    <text x="800" y="250" font-size="12" font-family="Kanit" font-weight="600" fill="#334155" text-anchor="middle">บริเวณเครื่องรีดผ้าและเครื่องพับผ้า</text>
+                    <!-- Ironing Machinery Graphic -->
+                    <rect x="690" y="210" width="60" height="60" fill="#facc15" stroke="#ca8a04" stroke-width="2"/>
+                    
+                    <!-- Bottom Right Rooms -->
+                    <!-- Meeting Room (Gray Table) -->
+                    <rect x="560" y="410" width="85" height="100" fill="#f1f5f9" stroke="#64748b" stroke-width="2"/>
+                    <rect x="580" y="440" width="30" height="40" fill="#fde047" stroke="#ca8a04" stroke-width="2"/>
+
+                    <!-- Office Room (Mint Green) -->
+                    <rect x="645" y="410" width="125" height="100" fill="#d1fae5" stroke="#64748b" stroke-width="2"/>
+                    <text x="705" y="430" font-size="11" font-family="Kanit" font-weight="600" fill="#065f46" text-anchor="middle">ห้องสำนักงาน</text>
+                    <!-- Office Desks -->
+                    <rect x="660" y="445" width="25" height="15" fill="#fde047" stroke="#ca8a04" stroke-width="1"/>
+                    <rect x="710" y="445" width="25" height="15" fill="#fde047" stroke="#ca8a04" stroke-width="1"/>
+
+                    <!-- Laundry Packing Room (Purple) -->
+                    <rect x="770" y="410" width="180" height="100" fill="#f3e8ff" stroke="#64748b" stroke-width="2"/>
+                    <text x="830" y="430" font-size="11" font-family="Kanit" font-weight="600" fill="#6b21a8" text-anchor="middle">ห้องบรรจุผ้า</text>
+
+                    <!-- Title Header on Canvas -->
+                    <text x="500" y="45" font-size="22" font-family="Kanit" font-weight="700" fill="#0f172a" text-anchor="middle">งานบริการผ้า ชั้น 1</text>
+                </svg>
+            `;
+        }
+
+        // Switch Mode (User Report vs Admin Edit)
+        function switchMode(mode) {
+            currentMode = mode;
+            const btnUser = document.getElementById('btn-mode-user');
+            const btnAdmin = document.getElementById('btn-mode-admin');
+            const adminControls = document.getElementById('admin-controls');
+            const modeBadge = document.getElementById('mode-badge');
+            const instructionText = document.getElementById('instruction-text');
+
+            if (mode === 'user') {
+                btnUser.className = "flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 bg-emerald-500 text-white shadow-sm";
+                btnAdmin.className = "flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 text-slate-400 hover:text-white";
+                adminControls.classList.add('hidden');
+                modeBadge.className = "px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700";
+                modeBadge.textContent = "โหมดผู้ใช้: คลิกปักหมุดเพื่อแจ้งเหตุ";
+                instructionText.textContent = "คลิกตรงตำแหน่งบนผังอาคารจริง เพื่อปักหมุดแจ้งจุดเสี่ยง/อันตราย";
+            } else {
+                btnAdmin.className = "flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 bg-indigo-600 text-white shadow-sm";
+                btnUser.className = "flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 text-slate-400 hover:text-white";
+                adminControls.classList.remove('hidden');
+                modeBadge.className = "px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700";
+                modeBadge.textContent = "โหมด Admin: อัปโหลดผังอาคาร / จัดการสิทธิ์";
+                instructionText.textContent = "คุณอยู่ในโหมด Admin: สามารถอัปโหลดไฟล์รูปผังอาคารใหม่ ปรับเปลี่ยนสถานะ หรือลบจุดเสี่ยง";
+            }
+        }
+
+        // Render Hazard Pins
+        function renderPins() {
+            const container = document.getElementById('pins-container');
+            container.innerHTML = '';
+
+            pins.forEach(pin => {
+                const el = document.createElement('div');
+                const isSelected = activeSelectedPinId === pin.id;
+                
+                // Color matching based on severity
+                let colorClass = 'bg-amber-500 text-white';
+                let pulseClass = '';
+                if (pin.severity === 'ต่ำ') colorClass = 'bg-emerald-500 text-white';
+                if (pin.severity === 'ปานกลาง') colorClass = 'bg-amber-500 text-white';
+                if (pin.severity === 'สูง') colorClass = 'bg-orange-500 text-white';
+                if (pin.severity === 'วิกฤต') {
+                    colorClass = 'bg-rose-600 text-white';
+                    pulseClass = 'animate-pin-pulse';
+                }
+
+                el.className = `absolute transform -translate-x-1/2 -translate-y-full cursor-pointer pointer-events-auto transition-transform ${isSelected ? 'scale-125 z-20' : 'hover:scale-110 z-10'}`;
+                el.style.left = `${pin.x}px`;
+                el.style.top = `${pin.y}px`;
+
+                el.innerHTML = `
+                    <div class="relative group">
+                        <!-- Pin Icon Badge -->
+                        <div class="w-8 h-8 rounded-full ${colorClass} ${pulseClass} shadow-lg flex items-center justify-center border-2 border-white">
+                            <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                        </div>
+                        
+                        <!-- Popover Tooltip on Hover -->
+                        <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 bg-slate-900 text-white text-[11px] rounded-lg p-2.5 shadow-xl z-30 pointer-events-none">
+                            <div class="font-bold border-b border-slate-700 pb-1 mb-1 truncate">${pin.title}</div>
+                            <div>ตำแหน่ง: <span class="text-slate-300">${pin.locationName}</span></div>
+                            <div>ระดับความรุนแรง: <span class="font-semibold text-amber-300">${pin.severity}</span></div>
+                            <div>สถานะ: ${pin.status}</div>
+                        </div>
+                    </div>
+                `;
+
+                el.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    highlightPin(pin.id);
+                });
+
+                container.appendChild(el);
+            });
+
+            lucide.createIcons();
+        }
+
+        // Detect Zone Name based on X, Y Coordinates for Default Laundry Plan
+        function detectZoneName(x, y) {
+            if (customPlanImage) return `พิกัด X:${x}, Y:${y}`;
+
+            if (x >= 180 && x <= 300 && y >= 110 && y <= 180) return 'ห้องเก็บสารเคมี';
+            if (x >= 180 && x <= 300 && y >= 180 && y <= 300) return 'ห้องเครื่องชั่งน้ำหนักผ้า';
+            if (x >= 180 && x <= 300 && y >= 390 && y <= 510) return 'ห้องควบคุม';
+            if (x >= 310 && x <= 640 && y >= 140 && y <= 200) return 'ห้องเครื่องซักผ้า';
+            if (x >= 310 && x <= 640 && y >= 200 && y <= 290) return 'ห้องเครื่องอบผ้า';
+            if (x >= 640 && x <= 950 && y >= 70 && y <= 200) return 'ห้องพับผ้า';
+            if (x >= 640 && x <= 950 && y >= 200 && y <= 410) return 'บริเวณเครื่องรีดผ้าและเครื่องพับผ้า';
+            if (x >= 645 && x <= 770 && y >= 410 && y <= 510) return 'ห้องสำนักงาน';
+            if (x >= 770 && x <= 950 && y >= 410 && y <= 510) return 'ห้องบรรจุผ้า';
+
+            return 'โถงทางเดิน / พื้นที่ทั่วไป';
+        }
+
+        // Canvas Click Handler (User Pin Creation)
+        function handleCanvasClick(e) {
+            if (isPanMode) return;
+
+            const rect = document.getElementById('floor-plan-background').getBoundingClientRect();
+            const x = Math.round((e.clientX - rect.left) / zoomScale);
+            const y = Math.round((e.clientY - rect.top) / zoomScale);
+
+            const locationName = detectZoneName(x, y);
+
+            // Open Modal for New Hazard Report
+            document.getElementById('report-x').value = x;
+            document.getElementById('report-y').value = y;
+            document.getElementById('report-location-name').value = locationName;
+            document.getElementById('hazard-form').reset();
+            document.getElementById('report-x').value = x;
+            document.getElementById('report-y').value = y;
+            document.getElementById('report-location-name').value = locationName;
+
+            openModal('report-modal');
+        }
+
+        // Form Submit Handler
+        function handleFormSubmit(e) {
+            e.preventDefault();
+
+            const newPin = {
+                id: 'pin_' + Date.now(),
+                title: document.getElementById('report-title').value,
+                category: document.getElementById('report-category').value,
+                severity: document.getElementById('report-severity').value,
+                desc: document.getElementById('report-desc').value,
+                author: document.getElementById('report-author').value,
+                status: 'รอแก้ไข',
+                x: parseInt(document.getElementById('report-x').value),
+                y: parseInt(document.getElementById('report-y').value),
+                locationName: document.getElementById('report-location-name').value,
+                timestamp: new Date().toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })
+            };
+
+            pins.unshift(newPin);
+            saveData();
+            renderPins();
+            renderTable();
+            closeModal('report-modal');
+            showToast('บันทึกการแจ้งจุดเสี่ยงเรียบร้อยแล้ว');
+        }
+
+        // Render Hazard Reports Table
+        function renderTable() {
+            const tbody = document.getElementById('table-body');
+            const emptyState = document.getElementById('empty-state');
+            const searchVal = document.getElementById('search-input').value.toLowerCase();
+            const filterStatus = document.getElementById('filter-status').value;
+            const filterSeverity = document.getElementById('filter-severity').value;
+
+            const filteredPins = pins.filter(pin => {
+                const matchSearch = pin.title.toLowerCase().includes(searchVal) || 
+                                    pin.author.toLowerCase().includes(searchVal) ||
+                                    pin.locationName.toLowerCase().includes(searchVal);
+                const matchStatus = filterStatus === 'ALL' || pin.status === filterStatus;
+                const matchSeverity = filterSeverity === 'ALL' || pin.severity === filterSeverity;
+
+                return matchSearch && matchStatus && matchSeverity;
+            });
+
+            tbody.innerHTML = '';
+
+            if (filteredPins.length === 0) {
+                emptyState.classList.remove('hidden');
+                return;
+            } else {
+                emptyState.classList.add('hidden');
+            }
+
+            filteredPins.forEach(pin => {
+                const tr = document.createElement('tr');
+                tr.className = `hover:bg-slate-50 transition border-b border-slate-100 cursor-pointer ${
+                    activeSelectedPinId === pin.id ? 'bg-indigo-50/60' : ''
+                }`;
+
+                // Severity Badge UI
+                let sevBadge = '';
+                if (pin.severity === 'ต่ำ') sevBadge = '<span class="px-2 py-0.5 rounded-full text-[11px] bg-emerald-100 text-emerald-700 font-medium">ต่ำ</span>';
+                else if (pin.severity === 'ปานกลาง') sevBadge = '<span class="px-2 py-0.5 rounded-full text-[11px] bg-amber-100 text-amber-700 font-medium">ปานกลาง</span>';
+                else if (pin.severity === 'สูง') sevBadge = '<span class="px-2 py-0.5 rounded-full text-[11px] bg-orange-100 text-orange-700 font-medium">สูง</span>';
+                else sevBadge = '<span class="px-2 py-0.5 rounded-full text-[11px] bg-rose-100 text-rose-700 font-bold">วิกฤต</span>';
+
+                // Status Badge UI
+                let statusBadge = '';
+                if (pin.status === 'รอแก้ไข') statusBadge = '<span class="px-2 py-1 rounded-lg text-xs bg-amber-50 text-amber-600 border border-amber-200 font-medium">รอแก้ไข</span>';
+                else if (pin.status === 'กำลังดำเนินการ') statusBadge = '<span class="px-2 py-1 rounded-lg text-xs bg-blue-50 text-blue-600 border border-blue-200 font-medium">กำลังดำเนินการ</span>';
+                else statusBadge = '<span class="px-2 py-1 rounded-lg text-xs bg-emerald-50 text-emerald-600 border border-emerald-200 font-medium">แก้ไขแล้ว</span>';
+
+                tr.innerHTML = `
+                    <td class="p-3.5 text-center">
+                        <div class="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center mx-auto">
+                            <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                        </div>
+                    </td>
+                    <td class="p-3.5" onclick="highlightPin('${pin.id}')">
+                        <div class="font-semibold text-slate-800">${pin.title}</div>
+                        <div class="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                            <i data-lucide="map-pin" class="w-3 h-3 text-slate-400"></i> ${pin.locationName}
+                        </div>
+                    </td>
+                    <td class="p-3.5 text-slate-600">${pin.category}</td>
+                    <td class="p-3.5 text-center">${sevBadge}</td>
+                    <td class="p-3.5">
+                        <div class="text-slate-700 font-medium">${pin.author}</div>
+                        <div class="text-[11px] text-slate-400">${pin.timestamp}</div>
+                    </td>
+                    <td class="p-3.5 text-center">${statusBadge}</td>
+                    <td class="p-3.5 text-right space-x-1">
+                        <select onchange="updatePinStatus('${pin.id}', this.value)" class="text-xs bg-white border border-slate-300 rounded px-1.5 py-1 focus:outline-none">
+                            <option value="รอแก้ไข" ${pin.status === 'รอแก้ไข' ? 'selected' : ''}>รอแก้ไข</option>
+                            <option value="กำลังดำเนินการ" ${pin.status === 'กำลังดำเนินการ' ? 'selected' : ''}>กำลังดำเนินการ</option>
+                            <option value="แก้ไขแล้ว" ${pin.status === 'แก้ไขแล้ว' ? 'selected' : ''}>แก้ไขแล้ว</option>
+                        </select>
+                        <button onclick="deletePin('${pin.id}')" class="text-slate-400 hover:text-rose-600 p-1" title="ลบรายการ">
+                            <i data-lucide="trash-2" class="w-4 h-4 inline"></i>
+                        </button>
+                    </td>
+                `;
+
+                tbody.appendChild(tr);
+            });
+
+            lucide.createIcons();
+        }
+
+        // Highlight Pin on Plan Canvas
+        function highlightPin(pinId) {
+            activeSelectedPinId = pinId;
+            renderPins();
+            renderTable();
+
+            const pin = pins.find(p => p.id === pinId);
+            if (pin) {
+                // Adjust Zoom Pan transform to focus pin
+                zoomScale = 1.2;
+                panX = 150 - (pin.x * zoomScale);
+                panY = 150 - (pin.y * zoomScale);
+                applyTransform();
+            }
+        }
+
+        // Update Pin Status
+        function updatePinStatus(pinId, newStatus) {
+            const pin = pins.find(p => p.id === pinId);
+            if (pin) {
+                pin.status = newStatus;
+                saveData();
+                renderPins();
+                renderTable();
+                showToast(`อัปเดตสถานะเป็น "${newStatus}" เรียบร้อย`);
+            }
+        }
+
+        // Delete Pin
+        function deletePin(pinId) {
+            if (confirm('คุณต้องการลบรายการจุดเสี่ยงนี้ใช่หรือไม่?')) {
+                pins = pins.filter(p => p.id !== pinId);
+                saveData();
+                renderPins();
+                renderTable();
+                showToast('ลบรายการจุดเสี่ยงเรียบร้อยแล้ว');
+            }
+        }
+
+        // Update Summary Stats
+        function updateStats() {
+            document.getElementById('stat-total').textContent = pins.length;
+            document.getElementById('stat-pending').textContent = pins.filter(p => p.status === 'รอแก้ไข').length;
+            document.getElementById('stat-progress').textContent = pins.filter(p => p.status === 'กำลังดำเนินการ').length;
+            document.getElementById('stat-resolved').textContent = pins.filter(p => p.status === 'แก้ไขแล้ว').length;
+        }
+
+        // ADMIN: Upload Custom Floor Plan Image
+        function handleImageUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                customPlanImage = evt.target.result;
+                localStorage.setItem('laundry_custom_plan_img', customPlanImage);
+                renderFloorPlanBackground();
+                showToast('อัปโหลดรูปภาพผังอาคารใหม่เรียบร้อยแล้ว');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // ADMIN: Reset to Default Laundry Plan
+        function resetDefaultPlan() {
+            if (confirm('คุณต้องการรีเซ็ตผังอาคารกลับเป็นผังเริ่มต้น (งานบริการผ้า ชั้น 1) หรือไม่?')) {
+                customPlanImage = null;
+                localStorage.removeItem('laundry_custom_plan_img');
+                renderFloorPlanBackground();
+                showToast('รีเซ็ตผังอาคารเรียนเรียบร้อย');
+            }
+        }
+
+        // ZOOM & PAN CONTROLS
+        function applyTransform() {
+            const wrapper = document.getElementById('canvas-transform-wrapper');
+            wrapper.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomScale})`;
+        }
+
+        function zoomCanvas(delta) {
+            zoomScale = Math.min(Math.max(0.6, zoomScale + delta), 2.5);
+            applyTransform();
+        }
+
+        function resetZoom() {
+            zoomScale = 1;
+            panX = 0;
+            panY = 0;
+            applyTransform();
+        }
+
+        function togglePanMode() {
+            isPanMode = !isPanMode;
+            const btn = document.getElementById('btn-toggle-pan');
+            const viewport = document.getElementById('floor-canvas-viewport');
+
+            if (isPanMode) {
+                btn.className = "p-1.5 bg-indigo-100 text-indigo-700 rounded text-xs flex items-center gap-1 font-bold";
+                viewport.style.cursor = "grab";
+                showToast('เข้าสู่โหมดลากผัง (Pan Mode)');
+            } else {
+                btn.className = "p-1.5 hover:bg-slate-100 rounded text-xs flex items-center gap-1 text-slate-600";
+                viewport.style.cursor = "crosshair";
+            }
+        }
+
+        function setupPanZoomEvents() {
+            const viewport = document.getElementById('floor-canvas-viewport');
+
+            viewport.addEventListener('mousedown', (e) => {
+                if (!isPanMode) return;
+                isDraggingPan = true;
+                startPanX = e.clientX - panX;
+                startPanY = e.clientY - panY;
+                viewport.style.cursor = "grabbing";
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isDraggingPan) return;
+                panX = e.clientX - startPanX;
+                panY = e.clientY - startPanY;
+                applyTransform();
+            });
+
+            window.addEventListener('mouseup', () => {
+                if (isDraggingPan) {
+                    isDraggingPan = false;
+                    viewport.style.cursor = isPanMode ? "grab" : "crosshair";
+                }
+            });
+        }
+
+        // Modal Helpers
+        function openModal(id) {
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        // Toast Messages
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-message').textContent = message;
+            toast.classList.remove('translate-y-20', 'opacity-0', 'pointer-events-none');
+            
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0', 'pointer-events-none');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
